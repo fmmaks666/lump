@@ -1,11 +1,12 @@
 import 'package:lump/contentdb.dart';
+import 'package:lump/lump.dart';
 
 void main(List<String> arguments) async {
   print('Hello isekai!');
 
-  Package mineclonia;
-  ContentDbApi api = ContentDbApi();
-  mineclonia = await api.queryPackage("mineclonia", "ryvnf");
+  //mineclonia = await api.queryPackage("mineclonia", "ryvnf");
+  LumpConfig conf = LumpConfig("/home/fmmaks/Documents/Games/minetest"); // Just a test
+  Lump l = Lump(conf);
 
-  print(mineclonia);
+  l.installPackage("saw", "misosya5300");
 }

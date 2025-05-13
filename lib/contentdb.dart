@@ -1,4 +1,5 @@
 import 'package:http/http.dart';
+import 'dart:typed_data';
 import 'dart:convert' show jsonDecode;
 
 class Package {
@@ -27,6 +28,13 @@ class Package {
       return Package(name, author, releaseId, pkgTypeFromStr(data["type"]), title);
     }
     throw ArgumentError("Invalid or malformed JSON");
+  }
+
+  bool sameAs(Package other) {
+    if (other.author != author) return false;
+    if (other.name != name) return false;
+    if (other.type != type) return false;
+    return true;
   }
 
   @override
@@ -58,6 +66,59 @@ class Package {
   }
 }
 
+class Release {
+  final String name;
+  final String? _title;
+  String get title => _title ?? name;
+  final String url;
+  // final int size;
+
+  int releaseId;
+
+  Release(this.url, this.name, this.releaseId, [this._title]);
+
+  factory Release.fromJson(Map<String, dynamic> data) {
+    if (data
+        case {
+          "url": String url,
+          "name": String name,
+          "id": int releaseId,
+        }) {
+      String? title;
+      if (data case {"title": String()}) title = data["title"] as String;
+
+      // [url] already has a /
+      return Release("https://content.luanti.org$url", name, releaseId, title);
+    }
+    throw ArgumentError("Invalid or malformed JSON");
+  }
+  @override
+  String toString() {
+    return "$name ($releaseId)";
+  }
+
+  @override
+  int get hashCode {
+    int result = 13;
+    result = 23 * result + name.hashCode;
+    result = 23 * result + title.hashCode;
+    result = 23 * result + releaseId.hashCode;
+    result = 23 * result + url.hashCode;
+    return result;
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! Release) return false;
+    if (other.name != name) return false;
+    if (other.title != title) return false;
+    if (other.url != url) return false;
+    if (other.releaseId != releaseId) return false;
+
+    return true;
+  }
+}
+
 enum PackageType {
   mod,
   texturePack,
@@ -76,6 +137,7 @@ PackageType pkgTypeFromStr(String type) {
 }
 
 class ContentDbApi {
+  // TODO: Close the client
   final Client _client;
 
   ContentDbApi() : _client = Client();
@@ -84,5 +146,16 @@ class ContentDbApi {
     Response r = await _client.get(Uri.parse("https://content.luanti.org/api/packages/$author/$name")); // Make this look better
     String json = r.body;
     return Package.fromJson(jsonDecode(json));
+  }
+
+  Future<Release> getRelease(Package pkg) async {
+    Response r = await _client.get(Uri.parse("https://content.luanti.org/api/packages/${pkg.author}/${pkg.name}/releases/${pkg.releaseId}"));
+    String json = r.body;
+    return Release.fromJson(jsonDecode(json));
+  }
+
+  Future<StreamedResponse> downloadRelease(Release release) async {
+    StreamedResponse r = await _client.send(Request("GET", Uri.parse(release.url)));
+    return r;
   }
 }
