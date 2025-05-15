@@ -5,8 +5,8 @@ void main(List<String> arguments) async {
   print('Hello isekai!');
 
   //mineclonia = await api.queryPackage("mineclonia", "ryvnf");
-  LumpConfig conf = LumpConfig("/home/fmmaks/Documents/Games/minetest"); // Just a test
+  LumpConfig conf = LumpConfig("/home/fmmaks/.minetest"); // Just a test
   Lump l = Lump(conf);
 
-  l.installPackage("saw", "misosya5300");
+  l.installPackage("rpg16", "Hugues Ross");
 }

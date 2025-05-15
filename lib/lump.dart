@@ -1,5 +1,6 @@
 import 'package:lump/contentdb.dart';
 import 'package:archive/archive.dart';
+import 'dart:io';
 
 class Lump {
   final LumpConfig _config;
@@ -30,15 +31,18 @@ class Lump {
   }
 }
 
+
+// `modpack.txt` scares me
+
 class LumpStorage {
   // Lazy load these
   List<Package> mods = [];
   List<Package> games = [];
   List<Package> texturePacks = [];
 
-  LumpConfig _config;
+  final LumpConfig _config;
 
-  ZipDecoder _decoder;
+  final ZipDecoder _decoder;
 
   LumpStorage(this._config) : _decoder = ZipDecoder();
 
@@ -54,11 +58,35 @@ class LumpStorage {
   void installFromArchive(Package pkg, List<int> bytes) {
     // TODO: Chech whether all the directories exist
     final archive = _decoder.decodeBytes(bytes);
+    String destFolder = switch (pkg.type) {
+      PackageType.mod => "mods",
+      PackageType.game => "games",
+      PackageType.texturePack => "textures",
+    };
+
+    Uri dest = Uri.file("${_config.luantiPath}/$destFolder");
+    _extractArchive(archive, dest);
+  }
+
+  void updateRelease(Package pkg) {
 
   }
 
-  void _extractArchive(Archive a, String dest) {
+  void _extractArchive(Archive a, Uri dest) {
     // Lump will replace files
+    String file = "";
+
+    for (var f in a) {
+      file = f.name;
+      if (f.isDirectory) {
+        Directory("${dest.toFilePath()}/$file").createSync();
+      } else if (f.isFile) {
+        File("${dest.toFilePath()}/$file")
+          ..createSync()
+          ..writeAsBytesSync(
+              f.readBytes()?.toList() ?? []); // Potentially slow?
+      }
+    }
   }
 }
 
@@ -67,3 +95,4 @@ class LumpConfig {
 
   LumpConfig(this.luantiPath);
 }
+
