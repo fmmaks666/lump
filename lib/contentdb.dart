@@ -1,4 +1,5 @@
 import 'package:http/http.dart';
+import 'package:lump/shared.dart';
 import 'dart:typed_data';
 import 'dart:convert' show jsonDecode;
 
@@ -19,15 +20,17 @@ class Package {
         case {
           "author": String author,
           "name": String name,
-          "release": int releaseId,
+          // "release": int releaseId,
           "type": "mod" || "txp" || "game",
         }) {
       String? title;
-      if (data case {"title": String()}) title = data["title"] as String;
+      if (data case {"title": String t}) title = t;
 
+      int releaseId = -1;
+      if (data case {"release": int release}) releaseId = release;
       return Package(name, author, releaseId, pkgTypeFromStr(data["type"]), title);
     }
-    throw ArgumentError("Invalid or malformed JSON");
+    throw MalformedJsonException("Invalid or malformed JSON");
   }
 
   bool sameAs(Package other) {
@@ -35,6 +38,10 @@ class Package {
     if (other.name != name) return false;
     if (other.type != type) return false;
     return true;
+  }
+
+  bool isNewer(Package other) {
+    return releaseId > other.releaseId;
   }
 
   @override
@@ -90,7 +97,7 @@ class Release {
       // [url] already has a /
       return Release("https://content.luanti.org$url", name, releaseId, title);
     }
-    throw ArgumentError("Invalid or malformed JSON");
+    throw MalformedJsonException("Invalid or malformed JSON");
   }
   @override
   String toString() {
@@ -146,6 +153,10 @@ class ContentDbApi {
     Response r = await _client.get(Uri.parse("https://content.luanti.org/api/packages/$author/$name")); // Make this look better
     String json = r.body;
     return Package.fromJson(jsonDecode(json));
+  }
+
+  Future<Package> queryPackageBy(Package pkg) async {
+    return await queryPackage(pkg.name, pkg.author);
   }
 
   Future<Release> getRelease(Package pkg) async {
