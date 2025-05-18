@@ -1,0 +1,2 @@
+# This is the amount of (half) hearts the player joins the game with
+heartcore_initial_max_hp (Initial Max Hearts) int 20 0 100

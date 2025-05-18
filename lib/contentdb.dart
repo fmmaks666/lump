@@ -26,9 +26,11 @@ class Package {
       String? title;
       if (data case {"title": String t}) title = t;
 
+      // This may have some funny issues
       int releaseId = -1;
       if (data case {"release": int release}) releaseId = release;
-      return Package(name, author, releaseId, pkgTypeFromStr(data["type"]), title);
+      return Package(
+          name, author, releaseId, pkgTypeFromStr(data["type"]), title);
     }
     throw MalformedJsonException("Invalid or malformed JSON");
   }
@@ -43,6 +45,8 @@ class Package {
   bool isNewer(Package other) {
     return releaseId > other.releaseId;
   }
+
+  PackageHeader asPackageHeader() => PackageHeader(name, author);
 
   @override
   String toString() {
@@ -70,6 +74,44 @@ class Package {
     if (other.releaseId != releaseId) return false;
 
     return true;
+  }
+}
+
+class PackageHeader {
+  final String name;
+  final String author;
+
+  const PackageHeader(this.name, this.author);
+  factory PackageHeader.fromString(String str) {
+    if (str.endsWith("/")) str = str.substring(0, str.length - 1);
+
+    final parts = str.split("/");
+    if (parts.length > 2) throw Exception("Invalid package");
+
+    final [author, name] = parts;
+    return PackageHeader(name, author);
+  }
+
+  @override
+  int get hashCode {
+    int result = 13;
+    result = 23 * result + author.hashCode;
+    result = 23 * result + name.hashCode;
+    return result;
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! PackageHeader) return false;
+    if (other.author != author) return false;
+    if (other.name != name) return false;
+
+    return true;
+  }
+
+  @override
+  String toString() {
+    return '$author/$name';
   }
 }
 
@@ -149,24 +191,28 @@ class ContentDbApi {
 
   ContentDbApi() : _client = Client();
 
-  Future<Package> queryPackage(String name, String author) async {
-    Response r = await _client.get(Uri.parse("https://content.luanti.org/api/packages/$author/$name")); // Make this look better
+  Future<Package> queryPackage(PackageHeader pkg) async {
+    // Handle error
+    Response r = await _client.get(Uri.parse(
+        "https://content.luanti.org/api/packages/${pkg.author}/${pkg.name}")); // Make this look better
     String json = r.body;
     return Package.fromJson(jsonDecode(json));
   }
 
   Future<Package> queryPackageBy(Package pkg) async {
-    return await queryPackage(pkg.name, pkg.author);
+    return await queryPackage(pkg.asPackageHeader());
   }
 
   Future<Release> getRelease(Package pkg) async {
-    Response r = await _client.get(Uri.parse("https://content.luanti.org/api/packages/${pkg.author}/${pkg.name}/releases/${pkg.releaseId}"));
+    Response r = await _client.get(Uri.parse(
+        "https://content.luanti.org/api/packages/${pkg.author}/${pkg.name}/releases/${pkg.releaseId}"));
     String json = r.body;
     return Release.fromJson(jsonDecode(json));
   }
 
   Future<StreamedResponse> downloadRelease(Release release) async {
-    StreamedResponse r = await _client.send(Request("GET", Uri.parse(release.url)));
+    StreamedResponse r =
+        await _client.send(Request("GET", Uri.parse(release.url)));
     return r;
   }
 }
