@@ -9,11 +9,15 @@ class Package {
   String get title => _title ?? name;
   final String name;
 
+  // Man, my code is a mess...
+  final String? shortDescription;
+
   final PackageType type;
 
   int releaseId;
 
-  Package(this.name, this.author, this.releaseId, this.type, [this._title]);
+  Package(this.name, this.author, this.releaseId, this.type,
+      [this.shortDescription, this._title]);
 
   factory Package.fromJson(Map<String, dynamic> data) {
     if (data
@@ -24,13 +28,15 @@ class Package {
           "type": "mod" || "txp" || "game",
         }) {
       String? title;
+      String? shortDesc;
       if (data case {"title": String t}) title = t;
+      if (data case {"short_description": String d}) shortDesc = d;
 
       // This may have some funny issues
       int releaseId = -1;
       if (data case {"release": int release}) releaseId = release;
-      return Package(
-          name, author, releaseId, pkgTypeFromStr(data["type"]), title);
+      return Package(name, author, releaseId, pkgTypeFromStr(data["type"]),
+          shortDesc, title);
     }
     throw MalformedJsonException("Invalid or malformed JSON");
   }
@@ -77,11 +83,50 @@ class Package {
   }
 }
 
-class PackageHeader {
+sealed class PackageHandle {
   final String name;
+
+  const PackageHandle(this.name);
+
+  factory PackageHandle.fromString(String str) {
+    // If it has a `/` it is a PackageHeader
+    if (str.endsWith("/")) str = str.substring(0, str.length - 1);
+
+    if (str.contains("/")) {
+      return PackageHeader.fromString(str);
+    }
+    return PackageName(str);
+  }
+
+  @override
+  int get hashCode {
+    int result = 13;
+    result = 23 * result + name.hashCode;
+    return result;
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! PackageHandle) return false;
+    if (other.name != name) return false;
+
+    return true;
+  }
+}
+
+class PackageName extends PackageHandle {
+  const PackageName(super.name);
+
+  @override
+  String toString() {
+    return "?/$name";
+  }
+}
+
+class PackageHeader extends PackageHandle {
   final String author;
 
-  const PackageHeader(this.name, this.author);
+  const PackageHeader(super.name, this.author);
   factory PackageHeader.fromString(String str) {
     if (str.endsWith("/")) str = str.substring(0, str.length - 1);
 
@@ -94,17 +139,16 @@ class PackageHeader {
 
   @override
   int get hashCode {
-    int result = 13;
-    result = 23 * result + author.hashCode;
+    int result = super.hashCode;
     result = 23 * result + name.hashCode;
     return result;
   }
 
   @override
   bool operator ==(Object other) {
+    if (super != other) return false;
     if (other is! PackageHeader) return false;
     if (other.author != author) return false;
-    if (other.name != name) return false;
 
     return true;
   }
@@ -188,13 +232,18 @@ PackageType pkgTypeFromStr(String type) {
 class ContentDbApi {
   // TODO: Close the client
   final Client _client;
+  final String _url;
 
-  ContentDbApi() : _client = Client();
+  ContentDbApi(this._url) : _client = Client();
+
+  void close() {
+    _client.close();
+  }
 
   Future<Package> queryPackage(PackageHeader pkg) async {
     // Handle error
     Response r = await _client.get(Uri.parse(
-        "https://content.luanti.org/api/packages/${pkg.author}/${pkg.name}")); // Make this look better
+        "$_url/packages/${pkg.author}/${pkg.name}")); // Make this look better
     String json = r.body;
     return Package.fromJson(jsonDecode(json));
   }
@@ -203,9 +252,26 @@ class ContentDbApi {
     return await queryPackage(pkg.asPackageHeader());
   }
 
+  Future<List<Package>> searchPackages(PackageHandle pkg) async {
+    final name = pkg.name;
+
+    Response r = await _client.get(
+        Uri.parse("$_url/api/packages/?q=$name"));
+
+    String json = r.body;
+    final results = jsonDecode(json);
+    List<Package> pkgs = [];
+    if (results is! List) return [];
+    for (final result in results) {
+      pkgs.add(Package.fromJson(result));
+      // Handle errors
+    }
+    return pkgs;
+  }
+
   Future<Release> getRelease(Package pkg) async {
     Response r = await _client.get(Uri.parse(
-        "https://content.luanti.org/api/packages/${pkg.author}/${pkg.name}/releases/${pkg.releaseId}"));
+        "$_url/packages/${pkg.author}/${pkg.name}/releases/${pkg.releaseId}"));
     String json = r.body;
     return Release.fromJson(jsonDecode(json));
   }

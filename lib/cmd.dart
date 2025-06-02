@@ -41,14 +41,23 @@ class InstallCommand extends Command {
       print("Error: No packages to install");
       return;
     }
-    final packages = argResults!.rest.map(PackageHeader.fromString);
+    final packages = argResults!.rest.map(PackageHandle.fromString);
 
     String pkgMsg = packages.length == 1 ? "package" : "packages";
     print("Installing ${packages.length} $pkgMsg");
     print(packages.join(" "));
 
     for (final package in packages) {
-      await _lump.installPackage(package);
+      if (package is PackageHeader) {
+        await _lump.installPackage(package);
+      } else {
+        final chosenPkg = await _lump.choosePackage(package as PackageName);
+        if (chosenPkg == null) {
+          print("Skipping, invalid package $package");
+          continue;
+        }
+        await _lump.installPackage(chosenPkg.asPackageHeader());
+      }
     }
   }
 }
@@ -75,9 +84,9 @@ class UpdateCommand extends Command {
       print("Error: No packages to update");
       return;
     }
-    Iterable<PackageHeader> packages;
+    Iterable<PackageHandle> packages;
     if (!argResults!.flag("all")) {
-      packages = argResults!.rest.map(PackageHeader.fromString);
+      packages = argResults!.rest.map(PackageHandle.fromString);
     } else {
       packages = (await _lump.getUpdates()).map((p) => p.asPackageHeader());
     }
@@ -87,7 +96,16 @@ class UpdateCommand extends Command {
     print(packages.join(" "));
 
     for (final package in packages) {
-      await _lump.updatePackage(package);
+      if (package is PackageHeader) {
+        await _lump.updatePackage(package);
+      } else {
+        final chosenPkg = await _lump.choosePackage(package as PackageName);
+        if (chosenPkg == null) {
+          print("Skipping, invalid package $package");
+          continue;
+        }
+        await _lump.updatePackage(chosenPkg.asPackageHeader());
+      }
     }
   }
 }
@@ -122,7 +140,7 @@ class RemoveCommand extends Command {
     print(packages.join(" "));
 
     for (final package in packages) {
-      _lump.removePackage(package);
+      await _lump.removePackage(package);
     }
   }
 }

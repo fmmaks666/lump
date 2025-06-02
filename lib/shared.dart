@@ -9,3 +9,15 @@ class PackageNotFoundException implements Exception {
 class InvalidPackageException implements Exception {
   InvalidPackageException(String message);
 }
+
+class ConfigNotFoundException implements Exception {
+  ConfigNotFoundException(String message);
+}
+
+class NoConfigPathException implements Exception {
+  NoConfigPathException(String message);
+}
+
+class InvalidDirectoryException implements Exception {
+  InvalidDirectoryException(String message);
+}
