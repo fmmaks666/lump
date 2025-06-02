@@ -23,7 +23,7 @@ class Lump {
     final pkgs = await _api.searchPackages(pkg);
     // Handle errors
     if (pkgs.isEmpty) return null;
-    if (pkgs.singleOrNull != null) return pkgs.single;
+    if (pkgs.length == 1) return pkgs.single;
 
     for (final i in pkgs.indexed) {
       final (index, pkg) = i;

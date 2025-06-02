@@ -256,7 +256,7 @@ class ContentDbApi {
     final name = pkg.name;
 
     Response r = await _client.get(
-        Uri.parse("$_url/api/packages/?q=$name"));
+        Uri.parse("$_url/packages/?q=$name"));
 
     String json = r.body;
     final results = jsonDecode(json);
