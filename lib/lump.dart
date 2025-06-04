@@ -20,9 +20,10 @@ class Lump {
   }
 
   Future<Package?> choosePackage(PackageName pkg) async {
-    final pkgs = await _api.searchPackages(pkg);
+    var pkgs = await _api.searchPackages(pkg);
     // Handle errors
     if (pkgs.isEmpty) return null;
+    pkgs = pkgs.where((p) => p.name.toLowerCase() == pkg.name.toLowerCase()).toList();
     if (pkgs.length == 1) return pkgs.single;
 
     for (final i in pkgs.indexed) {
@@ -38,6 +39,7 @@ class Lump {
     return pkgs[int.parse(choice) - 1];
   }
 
+  // TODO: Add package to modnames after installation
   Future<void> installPackage(PackageHeader pkgDef) async {
     // Check whether the package is installed
     // If not installed, download the archive and extract it
@@ -53,6 +55,23 @@ class Lump {
       // TEMPORARY
     } on MalformedJsonException {
       print("Couldn't install $pkgDef");
+    }
+  }
+
+  // TODO: Updated modpacks may have new mods, so refresh them
+  Future<void> updatePackage(PackageHeader pkgDef, [PackageType? type]) async {
+    try {
+      final pkg = await _storage.getPackage(pkgDef.name, pkgDef.author);
+      final newPkg = await _api.queryPackageBy(pkg);
+
+      if (newPkg.isNewer(pkg)) {
+        print("$pkg -> $newPkg");
+        await _install(newPkg);
+      } else {
+        print("No updates for $pkgDef");
+      }
+    } on PackageNotFoundException {
+      print("Package $pkgDef is not installed");
     }
   }
 
@@ -89,22 +108,6 @@ class Lump {
     });
 
     await completer.future;
-  }
-
-  Future<void> updatePackage(PackageHeader pkgDef, [PackageType? type]) async {
-    try {
-      final pkg = await _storage.getPackage(pkgDef.name, pkgDef.author);
-      final newPkg = await _api.queryPackageBy(pkg);
-
-      if (newPkg.isNewer(pkg)) {
-        print("$pkg -> $newPkg");
-        await _install(newPkg);
-      } else {
-        print("No updates for $pkgDef");
-      }
-    } on PackageNotFoundException {
-      print("Package $pkgDef is not installed");
-    }
   }
 
   // 8s before rewrite

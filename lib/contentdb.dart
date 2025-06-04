@@ -16,6 +16,8 @@ class Package {
 
   int releaseId;
 
+  // Dependencies dependencies;
+
   Package(this.name, this.author, this.releaseId, this.type,
       [this.shortDescription, this._title]);
 
@@ -185,6 +187,7 @@ class Release {
     }
     throw MalformedJsonException("Invalid or malformed JSON");
   }
+
   @override
   String toString() {
     return "$name ($releaseId)";
@@ -209,6 +212,31 @@ class Release {
     if (other.releaseId != releaseId) return false;
 
     return true;
+  }
+}
+
+class Dependencies {
+  final Set<PackageName> required;
+  final Set<PackageName> optional;
+
+  Dependencies(this.required, this.optional);
+
+  factory Dependencies.fromJson(List<Map<String, dynamic>> data) {
+    Set<PackageName> req = {};
+    Set<PackageName> opt = {};
+
+    //[ { is_optinal: false, name: mod }, ... ]
+    for (final entry in data) {
+      if (entry case {"is_optinal": bool isOptional, "name": String name}) {
+        final pkg = PackageName(name);
+        if (isOptional) {
+          opt.add(pkg);
+        } else {
+          req.add(pkg);
+        }
+      }
+    }
+    return Dependencies(req, opt);
   }
 }
 
@@ -255,8 +283,7 @@ class ContentDbApi {
   Future<List<Package>> searchPackages(PackageHandle pkg) async {
     final name = pkg.name;
 
-    Response r = await _client.get(
-        Uri.parse("$_url/packages/?q=$name"));
+    Response r = await _client.get(Uri.parse("$_url/packages/?q=$name"));
 
     String json = r.body;
     final results = jsonDecode(json);

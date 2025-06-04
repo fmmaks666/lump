@@ -3,13 +3,26 @@ import 'package:lump/contentdb.dart';
 import 'package:lump/shared.dart';
 import 'package:lump/lump.dart';
 import 'package:archive/archive.dart';
+import 'package:logging/logging.dart';
 import 'dart:io';
+
+// I hope that Luanti doesn't support recursive modpacks
+// This should be 2 distinct classes
 
 class LumpStorage {
   // Lazy load these
   List<Package> _mods = [];
   List<Package> _games = [];
   List<Package> _textures = [];
+
+  // Used for dependencies
+  Set<PackageName> modNames = {};
+  // String represents a path here
+  final Set<String> _modpacks = {}; // Just for convenience
+
+  String get modsPath => "${_config.luantiPath}/mods";
+  String get gamesPath => "${_config.luantiPath}/games";
+  String get texturesPath => "${_config.luantiPath}/textures";
 
   Future<List<Package>> get mods async {
     if (_mods.isNotEmpty) return _mods;
@@ -32,6 +45,8 @@ class LumpStorage {
   final LumpConfig _config;
 
   final ZipDecoder _decoder;
+
+  final Logger _logger = Logger("LumpStorage");
 
   LumpStorage(this._config) : _decoder = ZipDecoder();
 
@@ -166,49 +181,108 @@ class LumpStorage {
     return prefix.isNotEmpty ? prefix : null;
   }
 
+  // FIXED?: lump install caverealms (Shara/caverealms when the other one is installed)
   void _fixBrokenFolderName(Package pkg, String folderName) {
+    final newPath = pathTo(pkg);
+    final dir = Directory(newPath);
+    // A VERY DESTRUCTIVE ACTION!!!!!!!!!!!
+    if (dir.existsSync()) {
+      _logger.warning("$newPath exists. It will be deleted");
+      dir.deleteSync(recursive: true);
+    }
+
     Directory("${_config.luantiPath}/${packageDir(pkg.type)}/$folderName")
         .renameSync(pathTo(pkg));
   }
 
   // Make this async..
   Future<List<Package>> _getPackagesByType(PackageType type) async {
-    List<Package> pkgs = [];
-    ConfParser parser = ConfParser();
+    final dirPath = switch (type) {
+      PackageType.mod => modsPath,
+      PackageType.game => gamesPath,
+      PackageType.texturePack => texturesPath,
+    };
 
-    String dirPath = "${_config.luantiPath}/${packageDir(type)}";
     Directory dir = Directory(dirPath);
+    final pkgs = await loadPackagesInDir(
+        dir,
+        type,
+        (type == PackageType.mod)
+            ? (pkg, path, isModpack) {
+                modNames.add(PackageName(pkg.name));
+                if (isModpack) _modpacks.add(path);
+              }
+            : null);
+
+    if (type == PackageType.mod) {
+      _logger.finest("ModNames: $modNames");
+      _logger.finest("ModPacks: $_modpacks");
+    }
+
+    return pkgs;
+  }
+
+  // Mods, or Modpacks
+  // Is this really needed?
+  Future<List<Package>> loadPackagesInDir(Directory dir, PackageType type,
+      [void Function(Package pkg, String path, bool isModpack)?
+          onLoaded]) async {
+    if (!await dir.exists()) return [];
+    List<Package> pkgs = [];
+
     await for (final f in dir.list()) {
       if (f is! Directory) continue;
-      var confFile = File("${f.path}/${packageConf(type)}");
-      if (!await confFile.exists() && type != PackageType.mod) continue;
-      if (!await confFile.exists()) {
-        confFile = File("${f.path}/modpack.conf");
-        if (!await confFile.exists()) continue;
-      }
-
-      // Observation: games don't have a `name` property, so I will use the parent dir as the `name`
-      final conf = parser.parseToMap(await confFile.readAsString());
-      //print(conf);
-      try {
-        //print(confFile.parent);
-        final pkg = Package.fromJson({
-          ...conf,
-          "type": contentDbPkgType(type),
-          if (type == PackageType.game)
-            "name": confFile.parent.path.substring(
-                confFile.parent.path.lastIndexOf("/") +
-                    1) // Hopefully it doesn't add a slash at the end
-        });
+      final pkg = await loadSinglePackage(f, type, onLoaded);
+      if (pkg != null) {
         pkgs.add(pkg);
-        //print(pkg);
-      } on MalformedJsonException {
-        print("Broken package at ${confFile.path}");
-        continue;
       }
     }
 
     return pkgs;
+  }
+
+  Future<Package?> loadSinglePackage(Directory f, PackageType type,
+      [void Function(Package pkg, String path, bool isModpack)?
+          onLoaded]) async {
+    ConfParser parser = ConfParser();
+    bool isModpack = false;
+
+    var confFile =
+        File("${f.path}/${packageConf(type)}"); // Try to get the conf file
+
+    if (!await confFile.exists() && type != PackageType.mod) {
+      return null; // Skip if it is not a mod and doesn't have a conf file
+    }
+    if (!await confFile.exists()) {
+      // `Mods` may be modpacks, check for that here
+      confFile = File("${f.path}/modpack.conf");
+      isModpack = true;
+      if (!await confFile.exists()) return null;
+    }
+
+    // Observation: games don't have a `name` property, so I will use the parent dir as the `name`
+    final conf = parser.parseToMap(await confFile.readAsString());
+    //print(conf);
+    try {
+      //print(confFile.parent);
+      final pkg = Package.fromJson({
+        ...conf,
+        "type": contentDbPkgType(type),
+        if (type == PackageType.game)
+          "name": confFile.parent.path.substring(
+              confFile.parent.path.lastIndexOf("/") +
+                  1) // Hopefully it doesn't add a slash at the end
+      });
+
+      // TODO: \/
+      // What a terrible idea, where's single responsibility:
+      if (onLoaded != null) onLoaded(pkg, f.path, isModpack);
+
+      return pkg;
+    } on MalformedJsonException {
+      print("Broken package at ${confFile.path}");
+    }
+    return null;
   }
 
   String packageDir(PackageType type) {
