@@ -73,18 +73,30 @@ class Lump {
     return await _api.queryPackage(pkg);
   }
 
+  Future<List<Package>> searchPackages(String query) async {
+    return await _api.searchPackages(PackageName(query));
+  }
+
+  Future<int> createBackup(String path) async {
+    return await _storage.writeBackup(path);
+  }
+
+  Future<List<PackageHeader>> readBackup(String path) async {
+    return await _storage.readBackup(path);
+  }
+
   // TODO: Add package to modnames after installation
   Future<void> installPackage(PackageHeader pkgDef) async {
     // Check whether the package is installed
     // If not installed, download the archive and extract it
     try {
       final pkg = await _api.queryPackage(pkgDef);
+
       if (await _storage.isPackageInstalled(pkg)) {
         // Handle this
         print("${pkgDef.author}/${pkgDef.name} is already installed");
         return;
       }
-
       await _install(pkg);
       // TEMPORARY
     } on MalformedJsonException {

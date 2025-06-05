@@ -1,6 +1,7 @@
 import 'package:lump/contentdb.dart';
 import 'package:lump/lump.dart';
 import 'package:args/command_runner.dart';
+import 'dart:io';
 
 class NeededPackages {
   final List<PackageHeader> packages;
@@ -39,7 +40,7 @@ class NeededPackages {
       if (needed.isNotEmpty) {
         final depsMsg =
             needed.singleOrNull != null ? "dependency" : "dependencies";
-        print("Need ${needed.length} $depsMsg: ${needed.join()}");
+        print("Need ${needed.length} $depsMsg: ${needed.join(" ")}");
       }
       for (final dep in needed) {
         final candidates = deps.candidates[dep.name] ?? [];
@@ -75,7 +76,10 @@ CommandRunner initializeCmd(Lump l) {
     ..addCommand(InstallCommand(l))
     ..addCommand(UpdateCommand(l))
     ..addCommand(RemoveCommand(l))
-    ..addCommand(RefreshCommand(l));
+    ..addCommand(RefreshCommand(l))
+    ..addCommand(SearchCommand(l))
+    ..addCommand(BackupCommand(l))
+    ..addCommand(RestoreCommand(l));
 
   return runner;
 }
@@ -189,7 +193,7 @@ class RemoveCommand extends Command {
     }
     final packages = argResults!.rest.map(PackageHeader.fromString);
 
-    String pkgMsg = packages.length == 1 ? "package" : "packages";
+    String pkgMsg = packages.singleOrNull != null ? "package" : "packages";
     print("Removing ${packages.length} $pkgMsg");
     // TODO: Request approval
     print(packages.join(" "));
@@ -220,11 +224,109 @@ class RefreshCommand extends Command {
 
     final pkgs = await _lump.getUpdates();
 
-    String pkgMsg = pkgs.length == 1 ? "package" : "packages";
+    String pkgMsg = pkgs.singleOrNull != null ? "package" : "packages";
     print("${pkgs.length} updatable $pkgMsg");
 
     for (final pkg in pkgs) {
       print("- $pkg");
+    }
+  }
+}
+
+class BackupCommand extends Command {
+  @override
+  final name = "backup";
+  @override
+  String description =
+      "Save a list of currently installed packages into a text file";
+  @override
+  String usage =
+      "backup [filename] Optional file name, packages.txt by default";
+
+  final Lump _lump;
+
+  BackupCommand(this._lump) {
+    /* Nothing */
+  }
+
+  @override
+  void run() async {
+    String path = "packages.txt";
+    if (argResults != null && argResults!.rest.isNotEmpty) {
+      path = argResults!.rest.first;
+    }
+
+    print("Writing to $path...");
+    // It would be better to move this into LumpStorage?
+    final wrote = await _lump.createBackup(path);
+    print("Wrote $wrote lines to $path");
+  }
+}
+
+class RestoreCommand extends Command {
+  @override
+  final name = "restore";
+  @override
+  String description = "Install packages listed in a text file";
+  @override
+  String usage =
+      "restore [filename] Optional file name, packages.txt by default";
+
+  final Lump _lump;
+
+  RestoreCommand(this._lump) {
+    /* Nothing */
+  }
+
+  @override
+  void run() async {
+    String path = "packages.txt";
+    if (argResults != null && argResults!.rest.isNotEmpty) {
+      path = argResults!.rest.first;
+    }
+
+    print("Reading $path...");
+    // It would be better to move this into LumpStorage?
+    final pkgs = await _lump.readBackup(path);
+    String pkgMsg = pkgs.length == 1 ? "package" : "packages";
+    print("Loaded ${pkgs.length} $pkgMsg from $path");
+    print(pkgs.join(" "));
+
+    for (final pkg in pkgs) {
+      await _lump.installPackage(pkg);
+    }
+  }
+}
+
+class SearchCommand extends Command {
+  @override
+  final name = "search";
+  @override
+  String description = "Find packages";
+  @override
+  String usage = "restore (query) Searches for packages on ContentDB";
+
+  final Lump _lump;
+
+  SearchCommand(this._lump) {
+    /* Nothing */
+  }
+
+  @override
+  void run() async {
+    if (argResults == null) throw Error();
+    if (argResults!.rest.isEmpty) {
+      print("Error: No query specified");
+      return;
+    }
+
+    final query = argResults!.rest.join(" ");
+
+    final results = await _lump.searchPackages(query);
+
+    for (final pkg in results) {
+      String type = pkgTypeToStr(pkg.type);
+      print("${pkg.author}/${pkg.name} $type\n\t${pkg.shortDescription}");
     }
   }
 }

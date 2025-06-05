@@ -271,6 +271,12 @@ enum PackageType {
   game,
 }
 
+String pkgTypeToStr(PackageType type) => switch (type) {
+      PackageType.mod => "Mod",
+      PackageType.game => "Game",
+      PackageType.texturePack => "Texture Pack"
+    };
+
 PackageType pkgTypeFromStr(String type) {
   PackageType t = switch (type) {
     "mod" => PackageType.mod,

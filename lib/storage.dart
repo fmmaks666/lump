@@ -5,6 +5,7 @@ import 'package:lump/lump.dart';
 import 'package:archive/archive.dart';
 import 'package:logging/logging.dart';
 import 'dart:io';
+import 'dart:convert';
 
 // I hope that Luanti doesn't support recursive modpacks
 // This should be 2 distinct classes
@@ -364,6 +365,41 @@ class LumpStorage {
       _logger.finest("Broken package at ${confFile.path}");
     }
     return null;
+  }
+
+  Future<List<PackageHeader>> readBackup(String path) async {
+    final f = File(path);
+    final reader = f.openRead();
+    final lines = reader.transform(Utf8Decoder()).transform(LineSplitter());
+
+    List<PackageHeader> pkgs = [];
+    await for(final line in lines) {
+      pkgs.add(PackageHeader.fromString(line));
+    }
+
+    return pkgs;
+  }
+
+  Future<int> writeBackup(String path) async {
+    final f = File(path);
+    final sink = f.openWrite(mode: FileMode.append);
+
+    int i = 0;
+
+    for (final p in await mods) {
+      sink.writeln("${p.author}/${p.name}");
+      ++i;
+    }
+    for (final p in await games) {
+      sink.writeln("${p.author}/${p.name}");
+      ++i;
+    }
+    for (final p in await texturePacks) {
+      sink.writeln("${p.author}/${p.name}");
+      ++i;
+    }
+
+    return i;
   }
 
   String packageDir(PackageType type) {
