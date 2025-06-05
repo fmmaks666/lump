@@ -1,29 +1,55 @@
 import 'package:lump/contentdb.dart';
 import 'package:lump/shared.dart';
 import 'package:lump/storage.dart';
+import 'package:lump/dependency_resolver.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:async';
 import 'package:toml/toml.dart';
 
 class Lump {
-  final LumpConfig _config;
+  final LumpConfig config;
   final ContentDbApi _api;
   final LumpStorage _storage;
 
-  Lump(this._config)
-      : _api = ContentDbApi(_config.contentDbUrl),
-        _storage = LumpStorage(_config);
+  final DependencyResolver resolver;
+
+  Lump(this.config)
+      : _api = ContentDbApi(config.contentDbUrl),
+        _storage = LumpStorage(config),
+        resolver = config.resolveDependencies ? Resolver() : DummyResolver();
 
   void close() {
     _api.close();
   }
 
-  Future<Package?> choosePackage(PackageName pkg) async {
-    var pkgs = await _api.searchPackages(pkg);
+  Future<Package?> choosePackage(PackageName pkg,
+      [List<Package>? sourcePkgs]) async {
+    List<Package> pkgs;
+    if (sourcePkgs == null || sourcePkgs.isEmpty) {
+      pkgs = await _api.searchPackages(pkg);
+    } else {
+      pkgs = sourcePkgs;
+    }
+
     // Handle errors
     if (pkgs.isEmpty) return null;
-    pkgs = pkgs.where((p) => p.name.toLowerCase() == pkg.name.toLowerCase()).toList();
+    // I guess this won't work with "mod in modpack" dependencies
+    // Added special parameter ;D
+    // We should filter by NAME IS SAME and PROVIDES THAT NAME
+    // If we don't want to see games
+
+    pkgs = pkgs
+        .where((p) =>
+            !((!config.showGamesAsCandidates && p.type == PackageType.game) &&
+                sourcePkgs != null))
+        .toList();
+    pkgs = pkgs
+        .where((p) =>
+            p.name.toLowerCase() == pkg.name.toLowerCase() ||
+            p.provides.contains(PackageName(pkg.name)))
+        .toList();
+
     if (pkgs.length == 1) return pkgs.single;
 
     for (final i in pkgs.indexed) {
@@ -37,6 +63,14 @@ class Lump {
     if (int.tryParse(choice) == null) return null; // Should repeat the choice
 
     return pkgs[int.parse(choice) - 1];
+  }
+
+  Future<Set<PackageName>> resolveDependencies(Set<PackageName> needed) async {
+    return resolver.resolve(needed, await _storage.allModnames);
+  }
+
+  Future<Package> getPackage(PackageHeader pkg) async {
+    return await _api.queryPackage(pkg);
   }
 
   // TODO: Add package to modnames after installation
@@ -73,6 +107,11 @@ class Lump {
     } on PackageNotFoundException {
       print("Package $pkgDef is not installed");
     }
+  }
+
+  Future<Dependencies> getDependencies(PackageHeader pkg) async {
+    return await _api.getDependencies(pkg);
+    // TODO: Handle errors!
   }
 
   Future<void> _install(Package pkg) async {
@@ -135,10 +174,22 @@ class Lump {
 
   Future<List<Package>> _getUpdatesFor(List<Package> pkgs) async {
     List<Package> updates = [];
+    List<Future> tasks = [];
+    int i = 0;
+
     for (final pkg in pkgs) {
-      final online = await _api.queryPackageBy(pkg);
-      if (online.isNewer(pkg)) updates.add(online);
+      ++i;
+      if (i % 2 == 0) {
+        await Future.wait(tasks);
+        tasks.clear();
+      }
+
+      tasks.add(() async {
+        final online = await _api.queryPackageBy(pkg);
+        if (online.isNewer(pkg)) updates.add(online);
+      }());
     }
+    await Future.wait(tasks);
     return updates;
   }
 
@@ -160,12 +211,20 @@ class Lump {
 class LumpConfig {
   late String luantiPath;
   late String contentDbUrl;
+  late bool resolveDependencies;
+  late bool showGamesAsCandidates;
+  late bool useContentDbCandidates;
 
   static const Map<String, dynamic> sampleConfig = {
     "luanti": {
       "path": "YOUR_PATH_HERE",
       "contentdb": "https://content.luanti.org/api",
-    }
+    },
+    "lump": {
+      "resolve_dependencies": true,
+      "show_games_as_candidates": false,
+      "use_contentdb_candidates": true,
+    },
   };
 
   LumpConfig() {
@@ -193,8 +252,12 @@ class LumpConfig {
       throw ConfigNotFoundException("Config doesn't exists");
     }
     final conf = TomlDocument.parse(f.readAsStringSync()).toMap();
+    // TODO: Handle broken configs
     luantiPath = conf["luanti"]["path"];
     contentDbUrl = conf["luanti"]["contentdb"];
+    resolveDependencies = conf["lump"]["resolve_dependencies"];
+    showGamesAsCandidates = conf["lump"]["show_games_as_candidates"];
+    useContentDbCandidates = conf["lump"]["use_contentdb_candidates"];
     // Check whether the path is valid
 
     // final dir = Directory(luantiPath);

@@ -2,6 +2,67 @@ import 'package:lump/contentdb.dart';
 import 'package:lump/lump.dart';
 import 'package:args/command_runner.dart';
 
+class NeededPackages {
+  final List<PackageHeader> packages;
+  final List<PackageHeader> dependencies;
+
+  NeededPackages(this.packages, this.dependencies);
+
+  static Future<NeededPackages> fromHandles(
+      Lump l, Iterable<PackageHandle> packages) async {
+    // Man, I will need to do something about re-fetching
+    List<PackageHeader> requested = [];
+    List<PackageHeader> dependencies = [];
+    for (final p in packages) {
+      PackageHeader pkg;
+      if (p is PackageName) {
+        // 1. Get the package
+        final chosenPkg = await l.choosePackage(p);
+        if (chosenPkg == null) {
+          print("Skipping, invalid package $p");
+          continue;
+        }
+        pkg = chosenPkg.asPackageHeader();
+      } else {
+        pkg = p as PackageHeader;
+      }
+      requested.add(pkg);
+
+      if (!l.config.resolveDependencies) {
+        return NeededPackages(requested, dependencies);
+      }
+
+      // 2. Dependencies
+      final deps = await l.getDependencies(pkg);
+      Set<PackageName> needed = await l.resolveDependencies(deps.required);
+
+      if (needed.isNotEmpty) {
+        final depsMsg =
+            needed.singleOrNull != null ? "dependency" : "dependencies";
+        print("Need ${needed.length} $depsMsg: ${needed.join()}");
+      }
+      for (final dep in needed) {
+        final candidates = deps.candidates[dep.name] ?? [];
+        final candidatePkgs = <Package>[];
+
+        if (l.config.useContentDbCandidates) {
+          for (final c in candidates) {
+            if (c is PackageHeader) {
+              candidatePkgs.add(await l.getPackage(c));
+            }
+            // TODO: Handle errors!
+          }
+        }
+
+        final chosen = await l.choosePackage(dep, candidatePkgs);
+        if (chosen != null) dependencies.add(chosen.asPackageHeader());
+      }
+    }
+
+    return NeededPackages(requested, dependencies);
+  }
+}
+
 class LumpRunner extends CommandRunner {
   @override
   String? usageFooter = "Don't forget to eat cookies :)";
@@ -43,21 +104,19 @@ class InstallCommand extends Command {
     }
     final packages = argResults!.rest.map(PackageHandle.fromString);
 
-    String pkgMsg = packages.length == 1 ? "package" : "packages";
-    print("Installing ${packages.length} $pkgMsg");
-    print(packages.join(" "));
+    List<PackageHeader> allPackages = [];
 
-    for (final package in packages) {
-      if (package is PackageHeader) {
-        await _lump.installPackage(package);
-      } else {
-        final chosenPkg = await _lump.choosePackage(package as PackageName);
-        if (chosenPkg == null) {
-          print("Skipping, invalid package $package");
-          continue;
-        }
-        await _lump.installPackage(chosenPkg.asPackageHeader());
-      }
+    final pkgs = await NeededPackages.fromHandles(_lump, packages);
+
+    allPackages.addAll(pkgs.packages);
+    allPackages.addAll(pkgs.dependencies);
+
+    String pkgMsg = allPackages.singleOrNull != null ? "package" : "packages";
+    print("Installing ${allPackages.length} $pkgMsg");
+    print(allPackages.join(" "));
+
+    for (final package in allPackages) {
+      await _lump.installPackage(package);
     }
   }
 }
@@ -91,21 +150,17 @@ class UpdateCommand extends Command {
       packages = (await _lump.getUpdates()).map((p) => p.asPackageHeader());
     }
 
-    String pkgMsg = packages.length == 1 ? "package" : "packages";
+    final pkgs = await NeededPackages.fromHandles(_lump, packages);
+
+    String pkgMsg = pkgs.packages.singleOrNull != null ? "package" : "packages";
     print("Updating ${packages.length} $pkgMsg");
     print(packages.join(" "));
 
-    for (final package in packages) {
-      if (package is PackageHeader) {
-        await _lump.updatePackage(package);
-      } else {
-        final chosenPkg = await _lump.choosePackage(package as PackageName);
-        if (chosenPkg == null) {
-          print("Skipping, invalid package $package");
-          continue;
-        }
-        await _lump.updatePackage(chosenPkg.asPackageHeader());
-      }
+    for (final package in pkgs.packages) {
+      await _lump.updatePackage(package);
+    }
+    for (final dep in pkgs.dependencies) {
+      await _lump.installPackage(dep);
     }
   }
 }

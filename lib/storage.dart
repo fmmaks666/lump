@@ -16,7 +16,15 @@ class LumpStorage {
   List<Package> _textures = [];
 
   // Used for dependencies
-  Set<PackageName> modNames = {};
+  final Set<PackageName> modNames = {};
+
+  final Set<String> _brokenMods = {};
+
+  Future<Set<PackageName>> get allModnames async {
+    await loadModnames();
+    return modNames;
+  }
+
   // String represents a path here
   final Set<String> _modpacks = {}; // Just for convenience
 
@@ -84,6 +92,39 @@ class LumpStorage {
       /* Nothing */
     }
     throw PackageNotFoundException("Could not find package $author/$name");
+  }
+
+  void addModname(Package pkg) => modNames.add(PackageName(pkg.name));
+
+  Future<void> loadModnames() async {
+    await mods; // Load all mods, it will add them to modnames + will populate modpacks
+
+    for (final game in await games) {
+      final path = pathTo(game);
+      final dir = Directory("$path/mods");
+
+      await loadPackagesInDir(dir, PackageType.mod, (pkg, path, isModpack) {
+        modNames.add(PackageName(pkg.name));
+        if (isModpack) _modpacks.add(path);
+      }, (name, path, isModpack) {
+        _logger.finest("Added kinda broken mod(pack): $path");
+        if (isModpack) {
+          _modpacks.add(path);
+        } else {
+          _brokenMods.add(path);
+          modNames.add(PackageName(name));
+        }
+      });
+    }
+
+    // Deal with modpacks, now that we have every modpack
+    final numModpacks = _modpacks.length;
+
+    for (final path in _modpacks) {
+      final dir = Directory(path);
+      await loadModNamesInDir(dir);
+    }
+    assert(numModpacks == _modpacks.length);
   }
 
   Future<void> installFromArchive(Package pkg, List<int> bytes) async {
@@ -212,7 +253,16 @@ class LumpStorage {
                 modNames.add(PackageName(pkg.name));
                 if (isModpack) _modpacks.add(path);
               }
-            : null);
+            : null, (name, path, isModpack) {
+      _logger
+          .finest("Added kinda broken mod(pack): $path (when loading packages)");
+      if (isModpack) {
+        _modpacks.add(path);
+      } else {
+        _brokenMods.add(path);
+        modNames.add(PackageName(name));
+      }
+    });
 
     if (type == PackageType.mod) {
       _logger.finest("ModNames: $modNames");
@@ -225,25 +275,53 @@ class LumpStorage {
   // Mods, or Modpacks
   // Is this really needed?
   Future<List<Package>> loadPackagesInDir(Directory dir, PackageType type,
-      [void Function(Package pkg, String path, bool isModpack)?
-          onLoaded]) async {
+      [void Function(Package pkg, String path, bool isModpack)? onLoaded,
+      void Function(String name, String path, bool isModpack)? onError]) async {
     if (!await dir.exists()) return [];
     List<Package> pkgs = [];
 
-    await for (final f in dir.list()) {
-      if (f is! Directory) continue;
-      final pkg = await loadSinglePackage(f, type, onLoaded);
+    await _walkDir(dir, (f) async {
+      final pkg = await loadSinglePackage(f, type, onLoaded, onError);
       if (pkg != null) {
         pkgs.add(pkg);
       }
-    }
-
+    });
     return pkgs;
   }
 
+  Future<void> loadModNamesInDir(Directory dir) async {
+    if (!await dir.exists()) return;
+
+    await _walkDir(dir, (f) async {
+      final c = File("${f.path}/mod.conf");
+      if (!await c.exists()) return;
+      final parser = ConfParser();
+      final conf = parser.parseToMap(await c.readAsString());
+
+      if (conf case {"name": String name}) {
+        modNames.add(PackageName(name));
+      }
+    });
+  }
+
+  Future<void> _walkDir(
+      Directory dir, Future<void> Function(Directory f) onEnter) async {
+    if (!await dir.exists()) return;
+    List<Future> tasks = [];
+
+    await for (final f in dir.list()) {
+      if (f is! Directory) continue;
+      final task = onEnter(f);
+      tasks.add(task);
+
+    }
+
+    await Future.wait(tasks);
+  }
+
   Future<Package?> loadSinglePackage(Directory f, PackageType type,
-      [void Function(Package pkg, String path, bool isModpack)?
-          onLoaded]) async {
+      [void Function(Package pkg, String path, bool isModpack)? onLoaded,
+      void Function(String name, String path, bool isModpack)? onError]) async {
     ConfParser parser = ConfParser();
     bool isModpack = false;
 
@@ -262,16 +340,18 @@ class LumpStorage {
 
     // Observation: games don't have a `name` property, so I will use the parent dir as the `name`
     final conf = parser.parseToMap(await confFile.readAsString());
+
+    String name = confFile.parent.path
+        .substring(confFile.parent.path.lastIndexOf("/") + 1);
     //print(conf);
     try {
       //print(confFile.parent);
+
       final pkg = Package.fromJson({
         ...conf,
         "type": contentDbPkgType(type),
         if (type == PackageType.game)
-          "name": confFile.parent.path.substring(
-              confFile.parent.path.lastIndexOf("/") +
-                  1) // Hopefully it doesn't add a slash at the end
+          "name": name // Hopefully it doesn't add a slash at the end
       });
 
       // TODO: \/
@@ -280,7 +360,8 @@ class LumpStorage {
 
       return pkg;
     } on MalformedJsonException {
-      print("Broken package at ${confFile.path}");
+      if (onError != null) onError(name, f.path, isModpack);
+      _logger.finest("Broken package at ${confFile.path}");
     }
     return null;
   }

@@ -16,12 +16,14 @@ class Package {
 
   int releaseId;
 
-  // Dependencies dependencies;
+  Set<PackageName> provides;
 
   Package(this.name, this.author, this.releaseId, this.type,
-      [this.shortDescription, this._title]);
+      [this.shortDescription, this._title])
+      : provides = {};
 
   factory Package.fromJson(Map<String, dynamic> data) {
+    final Set<PackageName> provides = {};
     if (data
         case {
           "author": String author,
@@ -33,12 +35,18 @@ class Package {
       String? shortDesc;
       if (data case {"title": String t}) title = t;
       if (data case {"short_description": String d}) shortDesc = d;
+      if (data case {"provides": List provided}) {
+        for (final entry in provided) {
+          if (entry is String) provides.add(PackageName(entry));
+        }
+      }
 
       // This may have some funny issues
       int releaseId = -1;
       if (data case {"release": int release}) releaseId = release;
       return Package(name, author, releaseId, pkgTypeFromStr(data["type"]),
-          shortDesc, title);
+          shortDesc, title)
+        ..provides = provides; // Keep eyes on this :D
     }
     throw MalformedJsonException("Invalid or malformed JSON");
   }
@@ -219,24 +227,41 @@ class Dependencies {
   final Set<PackageName> required;
   final Set<PackageName> optional;
 
-  Dependencies(this.required, this.optional);
+  final Map<String, List<PackageHandle>> candidates;
 
-  factory Dependencies.fromJson(List<Map<String, dynamic>> data) {
+  Dependencies(this.required, this.optional, this.candidates);
+
+  factory Dependencies.fromJson(List<dynamic> data) {
     Set<PackageName> req = {};
     Set<PackageName> opt = {};
+    Map<String, List<PackageHandle>> candidates = {};
 
     //[ { is_optinal: false, name: mod }, ... ]
+
     for (final entry in data) {
-      if (entry case {"is_optinal": bool isOptional, "name": String name}) {
+      if (entry
+          case {
+            "is_optional": bool isOptional,
+            "name": String name,
+            "packages": List packages
+          }) {
         final pkg = PackageName(name);
         if (isOptional) {
           opt.add(pkg);
         } else {
           req.add(pkg);
         }
+
+        List<PackageHandle> deps = [];
+        for (final entry in packages) {
+          if (entry is! String) continue;
+          deps.add(PackageHandle.fromString(entry));
+        }
+        candidates[name] = deps;
+        // TODO: Handle errors
       }
     }
-    return Dependencies(req, opt);
+    return Dependencies(req, opt, candidates);
   }
 }
 
@@ -294,6 +319,13 @@ class ContentDbApi {
       // Handle errors
     }
     return pkgs;
+  }
+
+  Future<Dependencies> getDependencies(PackageHeader pkg) async {
+    Response r = await _client.get(
+        Uri.parse("$_url/packages/${pkg.author}/${pkg.name}/dependencies"));
+    String json = r.body;
+    return Dependencies.fromJson(jsonDecode(json)["${pkg.author}/${pkg.name}"]);
   }
 
   Future<Release> getRelease(Package pkg) async {

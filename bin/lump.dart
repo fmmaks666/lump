@@ -5,13 +5,14 @@ import 'package:logging/logging.dart';
 
 void main(List<String> arguments) async {
   try {
-    Logger.root.level = Level.ALL;
+    Logger.root.level = Level.FINE;
     Logger.root.onRecord.listen((ev) {
       print("${ev.level} ${ev.time}@${ev.loggerName} :: ${ev.message}");
     });
 
     LumpConfig conf = LumpConfig();
     Lump l = Lump(conf);
+
     final cmd = initializeCmd(l);
     await cmd.run(arguments);
 
