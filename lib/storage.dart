@@ -129,7 +129,7 @@ class LumpStorage {
   }
 
   Future<void> installFromArchive(Package pkg, List<int> bytes) async {
-    // TODO: Chech whether all the directories exist
+    // I hope this works :D
     final archive = _decoder.decodeBytes(bytes);
 
     String destFolder = packageDir(pkg.type);
@@ -163,7 +163,6 @@ class LumpStorage {
     // Rewrite it
     // Save it
 
-    // TODO: Errors!
     String destConf = packageConf(pkg.type);
 
     String path = "${pathTo(pkg)}/$destConf";
@@ -255,8 +254,8 @@ class LumpStorage {
                 if (isModpack) _modpacks.add(path);
               }
             : null, (name, path, isModpack) {
-      _logger
-          .finest("Added kinda broken mod(pack): $path (when loading packages)");
+      _logger.finest(
+          "Added kinda broken mod(pack): $path (when loading packages)");
       if (isModpack) {
         _modpacks.add(path);
       } else {
@@ -310,11 +309,16 @@ class LumpStorage {
     if (!await dir.exists()) return;
     List<Future> tasks = [];
 
-    await for (final f in dir.list()) {
-      if (f is! Directory) continue;
-      final task = onEnter(f);
-      tasks.add(task);
-
+    try {
+      await for (final f in dir.list()) {
+        if (f is! Directory) continue;
+        final task = onEnter(f);
+        tasks.add(task);
+      }
+      // JUST IN CASE
+    } on FileSystemException catch (e) {
+      _logger.warning("Error when walking through a dir: $e");
+      return;
     }
 
     await Future.wait(tasks);
@@ -355,8 +359,6 @@ class LumpStorage {
           "name": name // Hopefully it doesn't add a slash at the end
       });
 
-      // TODO: \/
-      // What a terrible idea, where's single responsibility:
       if (onLoaded != null) onLoaded(pkg, f.path, isModpack);
 
       return pkg;
@@ -373,32 +375,58 @@ class LumpStorage {
     final lines = reader.transform(Utf8Decoder()).transform(LineSplitter());
 
     List<PackageHeader> pkgs = [];
-    await for(final line in lines) {
-      pkgs.add(PackageHeader.fromString(line));
+    await for (final line in lines) {
+      try {
+        pkgs.add(PackageHeader.fromString(line));
+      } on FormatException {
+        continue;
+      }
     }
 
     return pkgs;
   }
 
   Future<int> writeBackup(String path) async {
+    int i = 0;
+
+    final [m, g, t] = await Future.wait([mods, games, texturePacks]);
+
     final f = File(path);
     final sink = f.openWrite(mode: FileMode.append);
 
-    int i = 0;
+    //await mods; // Yep, it crashes
 
-    for (final p in await mods) {
+    // sink.done.catchError((e) => print(e));
+
+    // These fellas don't throw erros :D
+    // I guess I have found an edge case in Dart?
+    // If I use I/O (which happens in mods)
+    // It makes sink throw the error silently
+    // But it actually crashes the app
+    // A workaround is to do the I/O before opening the Sink
+    // I will explore this error later
+    for (final p in m) {
+      // Never `await mods` here -- it breaks Dart?
       sink.writeln("${p.author}/${p.name}");
       ++i;
     }
-    for (final p in await games) {
+    for (final p in g) {
       sink.writeln("${p.author}/${p.name}");
       ++i;
     }
-    for (final p in await texturePacks) {
+    for (final p in t) {
       sink.writeln("${p.author}/${p.name}");
       ++i;
     }
 
+    // IT MUST BE CLOSED
+    try {
+      await sink.flush();
+      await sink.close();
+    } on FileSystemException catch (e) {
+      _logger.finer("Failed to close the sink: $e");
+      rethrow;
+    }
     return i;
   }
 

@@ -1,6 +1,7 @@
 import 'package:lump/contentdb.dart';
 import 'package:lump/lump.dart';
 import 'package:args/command_runner.dart';
+import 'package:lump/shared.dart';
 import 'dart:io';
 
 class NeededPackages {
@@ -34,24 +35,31 @@ class NeededPackages {
       }
 
       // 2. Dependencies
-      final deps = await l.getDependencies(pkg);
+      var deps = Dependencies.none();
+
+      deps = await l.getDependencies(pkg);
+      try {
+        deps = await l.getDependencies(pkg);
+      } on MalformedJsonException catch (e) {
+        l.logger.finer("Failed to get dependencies: $e");
+        return NeededPackages(requested, dependencies);
+      }
       Set<PackageName> needed = await l.resolveDependencies(deps.required);
 
-      if (needed.isNotEmpty) {
-        final depsMsg =
-            needed.singleOrNull != null ? "dependency" : "dependencies";
-        print("Need ${needed.length} $depsMsg: ${needed.join(" ")}");
-      }
       for (final dep in needed) {
         final candidates = deps.candidates[dep.name] ?? [];
         final candidatePkgs = <Package>[];
 
         if (l.config.useContentDbCandidates) {
           for (final c in candidates) {
-            if (c is PackageHeader) {
-              candidatePkgs.add(await l.getPackage(c));
+            try {
+              if (c is PackageHeader) {
+                if (dependencies.contains(c) || requested.contains(c)) continue;
+                candidatePkgs.add(await l.getPackage(c));
+              }
+            } on MalformedJsonException {
+              continue;
             }
-            // TODO: Handle errors!
           }
         }
 
@@ -81,6 +89,12 @@ CommandRunner initializeCmd(Lump l) {
     ..addCommand(BackupCommand(l))
     ..addCommand(RestoreCommand(l));
 
+  runner.argParser.addFlag("verbose",
+      abbr: "v",
+      help: "Show all log messages",
+      defaultsTo: false,
+      negatable: false);
+
   return runner;
 }
 
@@ -106,7 +120,10 @@ class InstallCommand extends Command {
       print("Error: No packages to install");
       return;
     }
+
+    // So sad to lose finals :(
     final packages = argResults!.rest.map(PackageHandle.fromString);
+    // } on FormatException {
 
     List<PackageHeader> allPackages = [];
 
@@ -115,11 +132,23 @@ class InstallCommand extends Command {
     allPackages.addAll(pkgs.packages);
     allPackages.addAll(pkgs.dependencies);
 
+    if (pkgs.dependencies.isNotEmpty) {
+      final depsMsg = pkgs.dependencies.singleOrNull != null
+          ? "dependency"
+          : "dependencies";
+      print(
+          "${pkgs.dependencies.length} $depsMsg found: ${pkgs.dependencies.join(" ")}");
+    }
+
     String pkgMsg = allPackages.singleOrNull != null ? "package" : "packages";
     print("Installing ${allPackages.length} $pkgMsg");
     print(allPackages.join(" "));
 
+    if (allPackages.isNotEmpty && !requestApproval("Continue?")) return;
+
     for (final package in allPackages) {
+      // I am not really a fan of catching any errors..
+      // But what if it is an only option :D D:
       await _lump.installPackage(package);
     }
   }
@@ -150,15 +179,26 @@ class UpdateCommand extends Command {
     Iterable<PackageHandle> packages;
     if (!argResults!.flag("all")) {
       packages = argResults!.rest.map(PackageHandle.fromString);
+      //} on FormatException {
     } else {
       packages = (await _lump.getUpdates()).map((p) => p.asPackageHeader());
     }
 
     final pkgs = await NeededPackages.fromHandles(_lump, packages);
 
+    if (pkgs.dependencies.isNotEmpty) {
+      final depsMsg = pkgs.dependencies.singleOrNull != null
+          ? "dependency"
+          : "dependencies";
+      print(
+          "${pkgs.dependencies.length} $depsMsg found: ${pkgs.dependencies.join(" ")}");
+    }
+
     String pkgMsg = pkgs.packages.singleOrNull != null ? "package" : "packages";
     print("Updating ${packages.length} $pkgMsg");
     print(packages.join(" "));
+
+    if (packages.isNotEmpty && !requestApproval("Continue?")) return;
 
     for (final package in pkgs.packages) {
       await _lump.updatePackage(package);
@@ -191,14 +231,23 @@ class RemoveCommand extends Command {
       print("Error: No packages to remove");
       return;
     }
-    final packages = argResults!.rest.map(PackageHeader.fromString);
+    Iterable<PackageHeader> packages = [];
+    try {
+      packages = argResults!.rest.map(PackageHeader.fromString);
+    } on FormatException {
+      // This is recoverable, I will reimplement this later
+      print("Error: invalid package");
+      return;
+    }
 
     String pkgMsg = packages.singleOrNull != null ? "package" : "packages";
     print("Removing ${packages.length} $pkgMsg");
-    // TODO: Request approval
     print(packages.join(" "));
 
+    if (packages.isNotEmpty && !requestApproval("Continue?")) return;
+
     for (final package in packages) {
+      // Errors here?
       await _lump.removePackage(package);
     }
   }
@@ -258,8 +307,13 @@ class BackupCommand extends Command {
 
     print("Writing to $path...");
     // It would be better to move this into LumpStorage?
-    final wrote = await _lump.createBackup(path);
-    print("Wrote $wrote lines to $path");
+    try {
+      final wrote = await _lump.createBackup(path);
+      print("Wrote $wrote lines to $path");
+    } on FileSystemException catch (e) {
+      _lump.logger.finer("Failed to write the backup: $e");
+      print("Failed: ${e.message}");
+    }
   }
 }
 
@@ -287,7 +341,14 @@ class RestoreCommand extends Command {
 
     print("Reading $path...");
     // It would be better to move this into LumpStorage?
-    final pkgs = await _lump.readBackup(path);
+    var pkgs = <PackageHeader>[];
+    try {
+      pkgs = await _lump.readBackup(path);
+    } on FileSystemException catch (e) {
+      _lump.logger.finer("Failed to read the backup: $e");
+      print("Failed: ${e.message}");
+      return;
+    }
     String pkgMsg = pkgs.length == 1 ? "package" : "packages";
     print("Loaded ${pkgs.length} $pkgMsg from $path");
     print(pkgs.join(" "));

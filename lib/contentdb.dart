@@ -3,6 +3,8 @@ import 'package:lump/shared.dart';
 import 'dart:typed_data';
 import 'dart:convert' show jsonDecode;
 
+// Handle ContentDb errors
+
 class Package {
   final String author;
   final String? _title;
@@ -141,7 +143,7 @@ class PackageHeader extends PackageHandle {
     if (str.endsWith("/")) str = str.substring(0, str.length - 1);
 
     final parts = str.split("/");
-    if (parts.length > 2) throw Exception("Invalid package");
+    if (parts.length > 2) throw FormatException("Invalid package");
 
     final [author, name] = parts;
     return PackageHeader(name, author);
@@ -231,6 +233,8 @@ class Dependencies {
 
   Dependencies(this.required, this.optional, this.candidates);
 
+  Dependencies.none() : this({}, {}, {});
+
   factory Dependencies.fromJson(List<dynamic> data) {
     Set<PackageName> req = {};
     Set<PackageName> opt = {};
@@ -255,10 +259,15 @@ class Dependencies {
         List<PackageHandle> deps = [];
         for (final entry in packages) {
           if (entry is! String) continue;
-          deps.add(PackageHandle.fromString(entry));
+          try {
+            deps.add(PackageHeader.fromString(entry));
+          } on MalformedJsonException {
+            continue;
+          } on FormatException {
+            continue;
+          }
         }
         candidates[name] = deps;
-        // TODO: Handle errors
       }
     }
     return Dependencies(req, opt, candidates);
@@ -289,7 +298,6 @@ PackageType pkgTypeFromStr(String type) {
 }
 
 class ContentDbApi {
-  // TODO: Close the client
   final Client _client;
   final String _url;
 
@@ -321,17 +329,25 @@ class ContentDbApi {
     List<Package> pkgs = [];
     if (results is! List) return [];
     for (final result in results) {
-      pkgs.add(Package.fromJson(result));
-      // Handle errors
+      try {
+        pkgs.add(Package.fromJson(result));
+      } on MalformedJsonException {
+        continue;
+      }
     }
     return pkgs;
   }
 
+  // NOTE: These functions can produce crazy errors
   Future<Dependencies> getDependencies(PackageHeader pkg) async {
     Response r = await _client.get(
         Uri.parse("$_url/packages/${pkg.author}/${pkg.name}/dependencies"));
     String json = r.body;
-    return Dependencies.fromJson(jsonDecode(json)["${pkg.author}/${pkg.name}"]);
+    Map<String, dynamic> decoded = jsonDecode(json);
+    if (!decoded.containsKey("${pkg.author}/${pkg.name}")) {
+      throw MalformedJsonException("Invalid response");
+    }
+    return Dependencies.fromJson(decoded["${pkg.author}/${pkg.name}"] as List);
   }
 
   Future<Release> getRelease(Package pkg) async {

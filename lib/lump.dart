@@ -2,22 +2,26 @@ import 'package:lump/contentdb.dart';
 import 'package:lump/shared.dart';
 import 'package:lump/storage.dart';
 import 'package:lump/dependency_resolver.dart';
+import 'package:lump/progress.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:async';
 import 'package:toml/toml.dart';
+import 'package:logging/logging.dart';
 
 class Lump {
   final LumpConfig config;
   final ContentDbApi _api;
   final LumpStorage _storage;
+  final Logger logger;
 
   final DependencyResolver resolver;
 
   Lump(this.config)
       : _api = ContentDbApi(config.contentDbUrl),
         _storage = LumpStorage(config),
-        resolver = config.resolveDependencies ? Resolver() : DummyResolver();
+        resolver = config.resolveDependencies ? Resolver() : DummyResolver(),
+        logger = Logger("LumpApp");
 
   void close() {
     _api.close();
@@ -25,9 +29,13 @@ class Lump {
 
   Future<Package?> choosePackage(PackageName pkg,
       [List<Package>? sourcePkgs]) async {
-    List<Package> pkgs;
+    List<Package> pkgs = [];
     if (sourcePkgs == null || sourcePkgs.isEmpty) {
+      //try {
       pkgs = await _api.searchPackages(pkg);
+      //} on MalformedJsonException {
+      // logger.finer("Failed to look up packages");
+      //}
     } else {
       pkgs = sourcePkgs;
     }
@@ -50,7 +58,8 @@ class Lump {
             p.provides.contains(PackageName(pkg.name)))
         .toList();
 
-    if (pkgs.length == 1) return pkgs.single;
+    if (pkgs.isEmpty) return null;
+    if (pkgs.singleOrNull != null) return pkgs.single;
 
     for (final i in pkgs.indexed) {
       final (index, pkg) = i;
@@ -104,7 +113,6 @@ class Lump {
     }
   }
 
-  // TODO: Updated modpacks may have new mods, so refresh them
   Future<void> updatePackage(PackageHeader pkgDef, [PackageType? type]) async {
     try {
       final pkg = await _storage.getPackage(pkgDef.name, pkgDef.author);
@@ -123,40 +131,56 @@ class Lump {
 
   Future<Dependencies> getDependencies(PackageHeader pkg) async {
     return await _api.getDependencies(pkg);
-    // TODO: Handle errors!
   }
 
+  // This can throw some errors. But which??
   Future<void> _install(Package pkg) async {
-    final release = await _api.getRelease(pkg);
-    final stream =
-        await _api.downloadRelease(release); // Here add a progress bar
+    final release = await _api.getRelease(pkg); // this may throw
+    final stream = await _api.downloadRelease(release); // this
 
     int max = stream.contentLength ?? 1;
     int received = 0;
     BytesBuilder bytes = BytesBuilder(copy: false);
+
+    Progress bar = Progress()..enablePulseSlowdown = false;
+
     // This is interesting...
     Completer completer = Completer();
 
     print("> ${pkg.asPackageHeader()}");
 
-    stream.stream.listen((data) {
-      received += data.length;
-      stdout.write('\x1B[2K\r');
-      int percent = ((received / max) * 100).round();
-      final bars = "=" * (0.2 * percent).round();
-      final empty = " " * (0.2 * (100 - percent)).round();
-      String bar = "[$bars$empty]-[$percent%]";
+    // Stream might throw too
+    stream.stream.listen(
+      (data) {
+        received += data.length;
+        bytes.add(data);
 
-      stdout.write(bar);
-      bytes.add(data);
-    }, onDone: () async {
-      //final bytes = await stream.stream.toBytes();
-      stdout.write("\x1B[2K\rUnpacking...");
-      await _storage.installFromArchive(pkg, bytes.takeBytes());
-      _storage.updatePackageRelease(pkg);
-      print("\x1B[2K\rDone.");
-      completer.complete();
-    });
+        bar.update(ProgressUpdateEvent(received, max));
+      },
+      onDone: () async {
+        //final bytes = await stream.stream.toBytes();
+        //bar.update(CustomProgressEvent("Unpacking..."));
+
+        // It doesn't block, right?? ;D
+        final t = Timer.periodic(Duration(milliseconds: 500),
+            (_) => bar.update(PulseProgressEvent("Unpacking...")));
+
+        await _storage.installFromArchive(pkg, bytes.takeBytes());
+        t.cancel();
+
+        _storage.updatePackageRelease(pkg);
+        // print("\x1B[2K\rDone.");
+        bar.update(CompleteProgressEvent());
+
+        completer.complete();
+      },
+      onError: (e) {
+        completer.complete();
+        bar.update(FailedProgressEvent());
+        logger.severe("Download failed: $e");
+      },
+      cancelOnError: true,
+    );
 
     await completer.future;
   }
@@ -245,7 +269,7 @@ class LumpConfig {
 
   static String getConfigPath() {
     if (!Platform.isLinux) {
-      print("TODO: Support this Platform?");
+      print("Error: unsupported platform (for now?)");
       exit(1);
     }
     // String? path = Platform.environment["XDG_CONFIG_DIRS"];
