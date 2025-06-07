@@ -140,11 +140,13 @@ class InstallCommand extends Command {
           "${pkgs.dependencies.length} $depsMsg found: ${pkgs.dependencies.join(" ")}");
     }
 
+    if (allPackages.isEmpty) return;
+
     String pkgMsg = allPackages.singleOrNull != null ? "package" : "packages";
     print("Installing ${allPackages.length} $pkgMsg");
     print(allPackages.join(" "));
 
-    if (allPackages.isNotEmpty && !requestApproval("Continue?")) return;
+    if (!requestApproval("Continue?")) return;
 
     for (final package in allPackages) {
       // I am not really a fan of catching any errors..
@@ -194,11 +196,13 @@ class UpdateCommand extends Command {
           "${pkgs.dependencies.length} $depsMsg found: ${pkgs.dependencies.join(" ")}");
     }
 
+    if (pkgs.packages.isEmpty) return;
+
     String pkgMsg = pkgs.packages.singleOrNull != null ? "package" : "packages";
     print("Updating ${packages.length} $pkgMsg");
     print(packages.join(" "));
 
-    if (packages.isNotEmpty && !requestApproval("Continue?")) return;
+    if (!requestApproval("Continue?")) return;
 
     for (final package in pkgs.packages) {
       await _lump.updatePackage(package);
@@ -231,22 +235,39 @@ class RemoveCommand extends Command {
       print("Error: No packages to remove");
       return;
     }
-    Iterable<PackageHeader> packages = [];
-    try {
-      packages = argResults!.rest.map(PackageHeader.fromString);
-    } on FormatException {
-      // This is recoverable, I will reimplement this later
-      print("Error: invalid package");
-      return;
+    //Iterable<PackageHandle> packages = [];
+    //try {
+    final packages = argResults!.rest.map(PackageHandle.fromString);
+    //} on FormatException {
+    // This is recoverable, I will reimplement this later
+    //print("Error: invalid package");
+    //return;
+    //}
+
+    final List<PackageHeader> pkgs = [];
+    for (final p in packages) {
+      if (p is PackageHeader) pkgs.add(p);
+      try {
+        final installed = await _lump.findInstalledPackages(p.name);
+        final chosen = await _lump.choosePackage(
+            PackageName(p.name), installed, true, true);
+        if (chosen == null) continue;
+        pkgs.add(chosen.asPackageHeader());
+      } on PackageNotFoundException {
+        print("$p was not found");
+        continue;
+      }
     }
 
-    String pkgMsg = packages.singleOrNull != null ? "package" : "packages";
-    print("Removing ${packages.length} $pkgMsg");
-    print(packages.join(" "));
+    if (pkgs.isEmpty) return;
 
-    if (packages.isNotEmpty && !requestApproval("Continue?")) return;
+    String pkgMsg = pkgs.singleOrNull != null ? "package" : "packages";
+    print("Removing ${pkgs.length} $pkgMsg");
+    print(pkgs.join(" "));
 
-    for (final package in packages) {
+    if (!requestApproval("Continue?")) return;
+
+    for (final package in pkgs) {
       // Errors here?
       await _lump.removePackage(package);
     }

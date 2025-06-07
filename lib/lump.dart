@@ -28,7 +28,9 @@ class Lump {
   }
 
   Future<Package?> choosePackage(PackageName pkg,
-      [List<Package>? sourcePkgs]) async {
+      [List<Package>? sourcePkgs,
+      bool showTypes = false,
+      bool mustIncludeGames = false]) async {
     List<Package> pkgs = [];
     if (sourcePkgs == null || sourcePkgs.isEmpty) {
       //try {
@@ -50,7 +52,7 @@ class Lump {
     pkgs = pkgs
         .where((p) =>
             !((!config.showGamesAsCandidates && p.type == PackageType.game) &&
-                sourcePkgs != null))
+                (sourcePkgs != null && !mustIncludeGames)))
         .toList();
     pkgs = pkgs
         .where((p) =>
@@ -63,7 +65,8 @@ class Lump {
 
     for (final i in pkgs.indexed) {
       final (index, pkg) = i;
-      print("[${index + 1}] $pkg");
+      final type = showTypes ? pkgTypeToStr(pkg.type) : "";
+      print("[${index + 1}] $pkg $type");
       print("${pkg.type}");
     }
     stdout.write("[1-${pkgs.length}] ");
@@ -147,7 +150,7 @@ class Lump {
     // This is interesting...
     Completer completer = Completer();
 
-    print("> ${pkg.asPackageHeader()}");
+    print("> ${pkg.asPackageHeader()} (${bytesToReadable(max)})");
 
     // Stream might throw too
     stream.stream.listen(
@@ -155,6 +158,7 @@ class Lump {
         received += data.length;
         bytes.add(data);
 
+        // bar.update(CustomProgressEvent(bytesToReadable(max)));
         bar.update(ProgressUpdateEvent(received, max));
       },
       onDone: () async {
@@ -238,6 +242,10 @@ class Lump {
     } on PackageNotFoundException {
       print("Package $pkgDef is not installed");
     }
+  }
+
+  Future<List<Package>> findInstalledPackages(String name) async {
+    return await _storage.findAllPackages(name);
   }
 }
 

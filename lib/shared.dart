@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' show pow;
 
 class MalformedJsonException implements Exception {
   MalformedJsonException(String message);
@@ -36,4 +37,15 @@ bool requestApproval(String message) {
   if (answer.isEmpty) return true;
   if (answer.toLowerCase() == "yes" || answer.toLowerCase() == "y") return true;
   return false;
+}
+
+String bytesToReadable(int bytes) {
+  final amount = 1024;
+
+  if (bytes < amount) return "${bytes}B";
+  if (bytes < pow(amount, 2)) return "${(bytes / pow(amount, 1)).round()}KB";
+  if (bytes < pow(amount, 3)) return "${(bytes / pow(amount, 2)).round()}MB";
+  if (bytes > pow(amount, 3)) return "${(bytes / pow(amount, 2)).round()}MB";
+
+  return "0B";
 }

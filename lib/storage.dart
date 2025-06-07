@@ -95,6 +95,20 @@ class LumpStorage {
     throw PackageNotFoundException("Could not find package $author/$name");
   }
 
+  Future<List<Package>> findAllPackages(String name) async {
+    List<Package> pkgs = [];
+
+    // These don't throw StateError
+    pkgs.addAll((await mods).where((pkg) => pkg.name == name));
+
+    pkgs.addAll((await games).where((pkg) => pkg.name == name));
+
+    pkgs.addAll((await texturePacks).where((pkg) => pkg.name == name));
+
+    if (pkgs.isEmpty) throw PackageNotFoundException("Package wasn't found");
+    return pkgs;
+  }
+
   void addModname(Package pkg) => modNames.add(PackageName(pkg.name));
 
   Future<void> loadModnames() async {
