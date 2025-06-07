@@ -1,3 +1,3 @@
 ## 1.0.0
 
-- Initial version.
+- The first release of Lump
