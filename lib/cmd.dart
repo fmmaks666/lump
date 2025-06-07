@@ -74,7 +74,8 @@ class NeededPackages {
 
 class LumpRunner extends CommandRunner {
   @override
-  String? usageFooter = "Don't forget to eat cookies :)";
+  String? usageFooter =
+      "Lump is licensed under the GPLv3 license. Check LICENSE for more details\nDon't forget to eat cookies :)";
 
   LumpRunner() : super("lump", "Simple package manager for Luanti");
 }
