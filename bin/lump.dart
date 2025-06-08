@@ -1,8 +1,7 @@
-import 'package:lump/lump.dart';
-import 'package:lump/cmd.dart';
-import 'package:lump/shared.dart';
+import 'package:lump/src/lump.dart';
+import 'package:lump/src/cmd.dart';
+import 'package:lump/src/shared.dart';
 import 'package:logging/logging.dart';
-import 'package:args/command_runner.dart';
 
 void main(List<String> arguments) async {
   Logger.root.level = Level.FINE;

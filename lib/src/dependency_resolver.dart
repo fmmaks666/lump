@@ -1,4 +1,4 @@
-import 'package:lump/contentdb.dart';
+import 'package:lump/src/contentdb.dart';
 // import 'package:lump/shared.dart';
 // import 'package:lump/lump.dart';
 // import 'package:lump/storage.dart';

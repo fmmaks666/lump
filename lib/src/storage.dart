@@ -1,6 +1,6 @@
-import 'package:lump/luanti.dart';
-import 'package:lump/contentdb.dart';
-import 'package:lump/shared.dart';
+import 'package:lump/src/luanti.dart';
+import 'package:lump/src/contentdb.dart';
+import 'package:lump/src/shared.dart';
 import 'package:lump/lump.dart';
 import 'package:archive/archive.dart';
 import 'package:logging/logging.dart';
@@ -250,7 +250,6 @@ class LumpStorage {
         .renameSync(pathTo(pkg));
   }
 
-  // Make this async..
   Future<List<Package>> _getPackagesByType(PackageType type) async {
     final dirPath = switch (type) {
       PackageType.mod => modsPath,

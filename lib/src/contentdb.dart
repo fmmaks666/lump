@@ -1,5 +1,5 @@
 import 'package:http/http.dart';
-import 'package:lump/shared.dart';
+import 'package:lump/src/shared.dart';
 import 'dart:convert' show jsonDecode;
 import 'package:logging/logging.dart';
 
@@ -301,11 +301,14 @@ class ContentDbApi {
   final Client _client;
   final String _url;
 
+  final int rateLimitThreshold;
+  final int waitTime;
+
   final _logger = Logger("ContentDbApi");
 
   DateTime _lastRequest;
 
-  ContentDbApi(this._url)
+  ContentDbApi(this._url, [this.rateLimitThreshold = 50, this.waitTime = 400])
       : _client = Client(),
         _lastRequest = DateTime.now();
 
@@ -376,8 +379,8 @@ class ContentDbApi {
 
   Future<Response> _doGetRequest(Uri url) async {
     final now = DateTime.now();
-    if ((now.difference(_lastRequest)) < Duration(milliseconds: 50)) {
-      await Future.delayed(Duration(milliseconds: 400));
+    if ((now.difference(_lastRequest)) < Duration(milliseconds: rateLimitThreshold)) {
+      await Future.delayed(Duration(milliseconds: waitTime));
     }
     _lastRequest = now;
     final r = await _client.get(url);

@@ -1,7 +1,7 @@
-import 'package:lump/contentdb.dart';
+import 'package:lump/src/contentdb.dart';
 import 'package:lump/lump.dart';
 import 'package:args/command_runner.dart';
-import 'package:lump/shared.dart';
+import 'package:lump/src/shared.dart';
 import 'dart:io';
 
 class NeededPackages {
