@@ -69,7 +69,6 @@ class Lump {
       final (index, pkg) = i;
       final type = showTypes ? pkgTypeToStr(pkg.type) : "";
       print("[${index + 1}] $pkg $type");
-      print("${pkg.type}");
     }
     stdout.write("[1-${pkgs.length}] ");
 

@@ -15,7 +15,9 @@ class NeededPackages {
     // Man, I will need to do something about re-fetching
     List<PackageHeader> requested = [];
     List<PackageHeader> dependencies = [];
-    for (final p in packages) {
+
+    print(packages);
+    for (final p in packages.toList()) {
       PackageHeader pkg;
       if (p is PackageName) {
         // 1. Get the package
@@ -31,7 +33,7 @@ class NeededPackages {
       requested.add(pkg);
 
       if (!l.config.resolveDependencies) {
-        return NeededPackages(requested, dependencies);
+        continue;
       }
 
       // 2. Dependencies
@@ -42,7 +44,7 @@ class NeededPackages {
         deps = await l.getDependencies(pkg);
       } on MalformedJsonException catch (e) {
         l.logger.finer("Failed to get dependencies: $e");
-        return NeededPackages(requested, dependencies);
+         continue;
       }
       Set<PackageName> needed = await l.resolveDependencies(deps.required);
 
@@ -133,6 +135,7 @@ class InstallCommand extends Command {
 
     allPackages.addAll(pkgs.packages);
     allPackages.addAll(pkgs.dependencies);
+
 
     if (pkgs.dependencies.isNotEmpty) {
       final depsMsg = pkgs.dependencies.singleOrNull != null
