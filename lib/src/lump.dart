@@ -254,12 +254,26 @@ class Lump {
 
 // WOULD BE MUCH BETER IF I USED PATH.JOIN OR WHATEVER
 class LumpConfig {
-  late String luantiPath;
-  late String contentDbUrl;
-  late bool resolveDependencies;
-  late bool showGamesAsCandidates;
-  late bool useContentDbCandidates;
+  final luantiPathOption = ConfigOption(
+      name: "path", section: "luanti", defaultValue: "YOUR_PATH_HERE");
+  final contentDbUrlOption = ConfigOption(
+      name: "contentdb",
+      section: "luanti",
+      defaultValue: "https://content.luanti.org/api");
+  final resolveDependenciesOption = ConfigOption(
+      name: "resolve_dependencies", section: "lump", defaultValue: true);
+  final showGamesAsCandidatesOption = ConfigOption(
+      name: "show_games_as_candidates", section: "lump", defaultValue: false);
+  final useContentDbCandidatesOption = ConfigOption(
+      name: "use_contentdb_candidates", section: "lump", defaultValue: true);
 
+  String get luantiPath => luantiPathOption.value;
+  String get contentDbUrl => contentDbUrlOption.value;
+  bool get resolveDependencies => resolveDependenciesOption.value;
+  bool get showGamesAsCandidates => showGamesAsCandidatesOption.value;
+  bool get useContentDbCandidates => useContentDbCandidatesOption.value;
+
+  // Build this from the option?
   static const Map<String, dynamic> sampleConfig = {
     "luanti": {
       "path": "YOUR_PATH_HERE",
@@ -298,13 +312,42 @@ class LumpConfig {
     }
     final conf = TomlDocument.parse(f.readAsStringSync()).toMap();
     // TODO: Handle broken configs
-    luantiPath = conf["luanti"]["path"];
-    contentDbUrl = conf["luanti"]["contentdb"];
-    resolveDependencies = conf["lump"]["resolve_dependencies"];
-    showGamesAsCandidates = conf["lump"]["show_games_as_candidates"];
-    useContentDbCandidates = conf["lump"]["use_contentdb_candidates"];
+
+    final pathSpecified = luantiPathOption.getValueFromMap(conf);
+    if (!pathSpecified)
+      throw InvalidConfigException(
+          "Please specifiy your Luanti path in the config");
+    contentDbUrlOption.getValueFromMap(conf);
+
+    resolveDependenciesOption.getValueFromMap(conf);
+    showGamesAsCandidatesOption.getValueFromMap(conf);
+    useContentDbCandidatesOption.getValueFromMap(conf);
+
     // Check whether the path is valid
 
     // final dir = Directory(luantiPath);
+  }
+}
+
+class ConfigOption<T> {
+  T? _value;
+  final T defaultValue;
+  T get value => _value != null ? _value! : defaultValue;
+
+  final String name;
+  final String section;
+
+  ConfigOption(
+      {required this.name, required this.section, required this.defaultValue});
+
+  /// Returns true if the option exists, false otherwise
+  bool getValueFromMap(Map<String, dynamic> data) {
+    if (!data.containsKey(section)) return false;
+    if (!data[section]!.containsKey(name)) return false;
+    final val = data[section]![name]!;
+    if (val is! T) return false;
+
+    _value = val;
+    return true;
   }
 }

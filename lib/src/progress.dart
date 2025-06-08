@@ -23,7 +23,8 @@ class Progress {
     if (enablePulseSlowdown) {
       pulseInc = ((_pulseCounter++ % animation.length * 3) == 0) ? 1 : 0;
     }
-    _frameIndex = (_frameIndex + pulseInc + animation.length) % animation.length;
+    _frameIndex =
+        (_frameIndex + pulseInc + animation.length) % animation.length;
 
     _bar = switch (_current) {
       ProgressUpdateEvent(value: final value, max: final max) =>

@@ -21,6 +21,12 @@ class NoConfigPathException implements Exception {
   NoConfigPathException(String message);
 }
 
+class InvalidConfigException implements Exception {
+  final String message;
+
+  InvalidConfigException(this.message);
+}
+
 class InvalidDirectoryException implements Exception {
   InvalidDirectoryException(String message);
 }

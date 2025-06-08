@@ -21,7 +21,8 @@ void main(List<String> arguments) async {
       Logger.root.level = Level.ALL;
     }
 
-    (await cmd.run(arguments)); /* .catchError((e) {
+    (await cmd.run(
+        arguments)); /* .catchError((e) {
       l.logger.severe("Error: $e");
       if (e is! UsageException) return;
       print("An error occured: ${e.message}");
@@ -33,6 +34,8 @@ void main(List<String> arguments) async {
   } on ConfigNotFoundException {
     print(
         "FATAL: Config not found. Blank config was created at ${LumpConfig.getConfigPath()}");
+  } on InvalidConfigException catch (e) {
+    print("FATAL: ${e.message}");
   } on FormatException catch (e, s) {
     print("Error: Invalid usage: ${e.message}");
     logger.finer("Error $e at\n$s");

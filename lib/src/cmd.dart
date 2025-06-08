@@ -1,5 +1,5 @@
 import 'package:lump/src/contentdb.dart';
-import 'package:lump/lump.dart';
+import 'package:lump/src/lump.dart';
 import 'package:args/command_runner.dart';
 import 'package:lump/src/shared.dart';
 import 'dart:io';
@@ -43,7 +43,7 @@ class NeededPackages {
         deps = await l.getDependencies(pkg);
       } on MalformedJsonException catch (e) {
         l.logger.finer("Failed to get dependencies: $e");
-         continue;
+        continue;
       }
       Set<PackageName> needed = await l.resolveDependencies(deps.required);
 
@@ -134,7 +134,6 @@ class InstallCommand extends Command {
 
     allPackages.addAll(pkgs.packages);
     allPackages.addAll(pkgs.dependencies);
-
 
     if (pkgs.dependencies.isNotEmpty) {
       final depsMsg = pkgs.dependencies.singleOrNull != null

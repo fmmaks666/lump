@@ -1,5 +1,5 @@
-import 'package:lump/contentdb.dart';
-import 'package:lump/luanti.dart';
+import 'package:lump/src/contentdb.dart';
+import 'package:lump/src/luanti.dart';
 import 'package:test/test.dart';
 import 'dart:convert' show jsonDecode;
 
@@ -46,7 +46,8 @@ void main() {
 title = Name
 name = mod
 release = 53
-    """.trim();
+    """
+        .trim();
     final data = <String, Object>{
       "title": "Name",
       "name": "mod",

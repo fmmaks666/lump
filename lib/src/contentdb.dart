@@ -379,7 +379,8 @@ class ContentDbApi {
 
   Future<Response> _doGetRequest(Uri url) async {
     final now = DateTime.now();
-    if ((now.difference(_lastRequest)) < Duration(milliseconds: rateLimitThreshold)) {
+    if ((now.difference(_lastRequest)) <
+        Duration(milliseconds: rateLimitThreshold)) {
       await Future.delayed(Duration(milliseconds: waitTime));
     }
     _lastRequest = now;

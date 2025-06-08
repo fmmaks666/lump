@@ -1,7 +1,7 @@
 import 'package:lump/src/luanti.dart';
 import 'package:lump/src/contentdb.dart';
 import 'package:lump/src/shared.dart';
-import 'package:lump/lump.dart';
+import 'package:lump/src/lump.dart';
 import 'package:archive/archive.dart';
 import 'package:logging/logging.dart';
 import 'dart:io';

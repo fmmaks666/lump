@@ -35,7 +35,6 @@ class ConfParser {
   }
 }
 
-
 extension IsInt on String {
   bool isInt() {
     return int.tryParse(this) != null;
