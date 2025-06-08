@@ -1,6 +1,7 @@
 import 'package:http/http.dart';
 import 'package:lump/shared.dart';
 import 'dart:convert' show jsonDecode;
+import 'package:logging/logging.dart';
 
 // Handle ContentDb errors
 
@@ -300,7 +301,13 @@ class ContentDbApi {
   final Client _client;
   final String _url;
 
-  ContentDbApi(this._url) : _client = Client();
+  final _logger = Logger("ContentDbApi");
+
+  DateTime _lastRequest;
+
+  ContentDbApi(this._url)
+      : _client = Client(),
+        _lastRequest = DateTime.now();
 
   void close() {
     _client.close();
@@ -308,10 +315,15 @@ class ContentDbApi {
 
   Future<Package> queryPackage(PackageHeader pkg) async {
     // Handle error
-    Response r = await _client.get(Uri.parse(
-        "$_url/packages/${pkg.author}/${pkg.name}")); // Make this look better
-    String json = r.body;
-    return Package.fromJson(jsonDecode(json));
+    try {
+      Response r = await _doGetRequest(Uri.parse(
+          "$_url/packages/${pkg.author}/${pkg.name}")); // Make this look better
+      String json = r.body;
+      return Package.fromJson(jsonDecode(json));
+    } on FormatException catch (e, s) {
+      _logger.finer("Caught $e\n$s\nThe source: ${e.source}");
+      rethrow;
+    }
   }
 
   Future<Package> queryPackageBy(Package pkg) async {
@@ -321,7 +333,7 @@ class ContentDbApi {
   Future<List<Package>> searchPackages(PackageHandle pkg) async {
     final name = pkg.name;
 
-    Response r = await _client.get(Uri.parse("$_url/packages/?q=$name"));
+    Response r = await _doGetRequest(Uri.parse("$_url/packages/?q=$name"));
 
     String json = r.body;
     final results = jsonDecode(json);
@@ -339,7 +351,7 @@ class ContentDbApi {
 
   // NOTE: These functions can produce crazy errors
   Future<Dependencies> getDependencies(PackageHeader pkg) async {
-    Response r = await _client.get(
+    Response r = await _doGetRequest(
         Uri.parse("$_url/packages/${pkg.author}/${pkg.name}/dependencies"));
     String json = r.body;
     Map<String, dynamic> decoded = jsonDecode(json);
@@ -350,7 +362,7 @@ class ContentDbApi {
   }
 
   Future<Release> getRelease(Package pkg) async {
-    Response r = await _client.get(Uri.parse(
+    Response r = await _doGetRequest(Uri.parse(
         "$_url/packages/${pkg.author}/${pkg.name}/releases/${pkg.releaseId}"));
     String json = r.body;
     return Release.fromJson(jsonDecode(json));
@@ -359,6 +371,21 @@ class ContentDbApi {
   Future<StreamedResponse> downloadRelease(Release release) async {
     StreamedResponse r =
         await _client.send(Request("GET", Uri.parse(release.url)));
+    return r;
+  }
+
+  Future<Response> _doGetRequest(Uri url) async {
+    final now = DateTime.now();
+    if ((now.difference(_lastRequest)) < Duration(milliseconds: 50)) {
+      await Future.delayed(Duration(milliseconds: 400));
+    }
+    _lastRequest = now;
+    final r = await _client.get(url);
+    if (r.statusCode == 429) {
+      _logger.warning("Rate limited");
+      await Future.delayed(Duration(seconds: 2));
+      return await _client.get(url);
+    }
     return r;
   }
 }

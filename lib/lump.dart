@@ -33,11 +33,13 @@ class Lump {
       bool mustIncludeGames = false]) async {
     List<Package> pkgs = [];
     if (sourcePkgs == null || sourcePkgs.isEmpty) {
-      //try {
-      pkgs = await _api.searchPackages(pkg);
-      //} on MalformedJsonException {
-      // logger.finer("Failed to look up packages");
-      //}
+      try {
+        pkgs = await _api.searchPackages(pkg);
+      } on MalformedJsonException {
+        logger.finer("Failed to look up packages");
+      } on FormatException catch (e, s) {
+        logger.finer("Failed to look up packages: $e\n$s");
+      }
     } else {
       pkgs = sourcePkgs;
     }

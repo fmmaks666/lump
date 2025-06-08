@@ -55,7 +55,8 @@ class NeededPackages {
             try {
               if (c is PackageHeader) {
                 if (dependencies.contains(c) || requested.contains(c)) continue;
-                candidatePkgs.add(await l.getPackage(c));
+                final p = await l.getPackage(c);
+                candidatePkgs.add(p);
               }
             } on MalformedJsonException {
               continue;
