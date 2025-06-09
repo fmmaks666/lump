@@ -16,7 +16,7 @@ class NeededPackages {
     List<PackageHeader> requested = [];
     List<PackageHeader> dependencies = [];
 
-    for (final p in packages.toList()) {
+    for (final p in packages) {
       PackageHeader pkg;
       if (p is PackageName) {
         // 1. Get the package

@@ -226,8 +226,12 @@ class Lump {
       }
 
       tasks.add(() async {
-        final online = await _api.queryPackageBy(pkg);
-        if (online.isNewer(pkg)) updates.add(online);
+        try {
+          final online = await _api.queryPackageBy(pkg);
+          if (online.isNewer(pkg)) updates.add(online);
+        } on MalformedJsonException {
+          logger.finer("Couldn't find $pkg while looking for updates");
+        }
       }());
     }
     await Future.wait(tasks);
