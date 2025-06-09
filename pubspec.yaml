@@ -1,6 +1,6 @@
 name: lump
 description: A simple package manager for Luanti
-version: 1.0.1
+version: 1.0.2
 repository: https://github.com/fmmaks666/lump
 topics:
     - luanti
